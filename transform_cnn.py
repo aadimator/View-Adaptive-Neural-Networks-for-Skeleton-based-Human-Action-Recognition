@@ -6,6 +6,26 @@ import torch.nn as nn
 from torch.autograd import Variable
 import torchvision.models as models
 
+class ANN(nn.Module):
+    """The layer for transforming the skeleton to the observed viewpoints"""
+    def __init__(self,num_classes = 60):
+        super(ANN, self).__init__()
+        self.num_classes = num_classes
+        self.fc1 = nn.Linear(3 * 224 * 224, 512)
+        self.relu1 = nn.ReLU(inplace=True)
+        self.fc2 = nn.Linear(512, 320)
+        self.relu2 = nn.ReLU(inplace=True)
+        self.fc3 = nn.Linear(320, self.num_classes)
+
+    def forward(self, x):
+        x = torch.flatten(x, 1)
+        x = self.fc1(x)
+        x = self.relu1(x)
+        x = self.fc2(x)
+        x = self.relu2(x)
+        x = self.fc3(x)
+
+        return x
 
 class VA(nn.Module):
     """The layer for transforming the skeleton to the observed viewpoints"""
@@ -22,7 +42,7 @@ class VA(nn.Module):
         self.relu2 = nn.ReLU(inplace=True)
         self.avepool = nn.MaxPool2d(7)
         self.fc = nn.Linear(6272, 6)
-        self.classifier = models.resnet50(pretrained=True)
+        self.classifier = models.alexnet(pretrained=True)
         self.init_weight()
 
     def forward(self, x1, maxmin):
@@ -61,8 +81,10 @@ class VA(nn.Module):
         self.fc.bias.data.zero_()
         self.fc.weight.data.zero_()
 
-        num_ftrs = self.classifier.fc.in_features
-        self.classifier.fc = nn.Linear(num_ftrs, self.num_classes)
+        # num_ftrs = self.classifier.fc.in_features
+        # self.classifier.fc = nn.Linear(num_ftrs, self.num_classes)
+        num_ftrs = self.classifier.classifier[6].in_features
+        self.classifier.classifier[6] = nn.Linear(num_ftrs, self.num_classes)
 
 # get transformation matrix
 def _trans_rot(trans, rot):

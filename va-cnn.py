@@ -13,7 +13,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torchvision.models as models
-from transform_cnn import VA
+from transform_cnn import VA, ANN
 from data_cnn import NTUDataLoaders, AverageMeter,  make_dir, get_cases, get_num_classes
 
 args = argparse.ArgumentParser(description='View adaptive')
@@ -32,14 +32,14 @@ args.add_argument('--optimizer', type=str, default='Adam',
 args.add_argument('--print_freq', '-p', type=int, default=20,
                   help='print frequency (default: 20)')
 args.add_argument('-b', '--batch_size', type=int, default=32,
-                  help='mini-batch size (default: 256)')
+                  help='mini-batch size (default: 32)')
 args.add_argument('--num_classes', type=int, default=60,
                   help='the number of classes')
 args.add_argument('--case', type=int, default=0,
                   help='select which case')
 args.add_argument('--aug', type=int, default=1,
                   help='data augmentation')
-args.add_argument('--workers', type=int, default=8,
+args.add_argument('--workers', type=int, default=0,
                   help='number of data loading workers')
 args.add_argument('--monitor', type=str, default='val_acc',
                   help='quantity to monitor (default: val_acc)')
@@ -53,9 +53,44 @@ def main(results):
     if args.model[0:2] == 'VA':
         model = VA(num_classes)
     else:
-        model = models.resnet50(pretrained=True)
-        num_ftrs = model.fc.in_features
-        model.fc = nn.Linear(num_ftrs, num_classes)
+        model = models.alexnet(pretrained=True)
+        # num_ftrs = model.fc.in_features
+        # model.fc = nn.Linear(num_ftrs, num_classes)
+        num_ftrs = model.classifier.classifier[6].in_features
+        model.classifier.classifier[6] = nn.Linear(num_ftrs, model.num_classes)
+
+    tl_path = str(args.case) + "_best.pth"
+
+    tl_checkpoint = torch.load(tl_path)
+
+    # print(model.state_dict())
+
+    # num_ftrs = model.classifier.classifier[6].in_features
+    # model.classifier.classifier[6] = nn.Linear(num_ftrs, 60)
+    # num_ftrs = model.classifier.fc.in_features
+    # model.classifier.fc = nn.Linear(num_ftrs, 60)
+
+    model.load_state_dict(tl_checkpoint['state_dict'], strict=False)
+
+    # print(model.classifier.classifier[6].weight.data)
+
+    # model.classifier.fc = nn.Linear(num_ftrs, model.num_classes)
+
+    # model.classifier.classifier[6] = nn.Linear(num_ftrs, model.num_classes)
+
+    for param in model.parameters():
+        param.requires_grad = False
+
+    # model.classifier = ANN(num_classes)
+    print(model)
+
+    print("Using ANN")
+
+    model.classifier = ANN(model.num_classes)
+    model.train()
+    # print(model.classifier.classifier[6].weight.data)
+    print(model)
+    input("Model")
 
     model = model.cuda()
 
@@ -167,13 +202,16 @@ def train(train_loader, model, criterion, optimizer, epoch):
     model.train()
 
     for i, (inputs, maxmin, target) in enumerate(train_loader):
-
+        # print(inputs.shape)
+        # print(inputs)
         if args.model[0:2] == 'VA':
             output, imag, trans = model(inputs.cuda(), maxmin.cuda())
         else:
             output = model(inputs.cuda())
 
-        target = target.cuda(async=True)
+        target = target.cuda(non_blocking=True)
+        # print(target.shape)
+        # print(output.shape)
         loss = criterion(output, target)
 
         # measure accuracy and record loss
@@ -210,7 +248,7 @@ def validate(val_loader, model, criterion):
         else:
             with torch.no_grad():
                 output = model(inputs.cuda())
-        target = target.cuda(async=True)
+        target = target.cuda(non_blocking=True)
         with torch.no_grad():
             loss = criterion(output, target)
 
